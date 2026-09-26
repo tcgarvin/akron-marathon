@@ -250,14 +250,14 @@
     const dx = xy[hi][0] - xy[lo][0], dy = xy[hi][1] - xy[lo][1], len = Math.hypot(dx, dy) || 1;
     return { x: xy[lo][0] + f * dx, y: xy[lo][1] + f * dy, nx: -dy / len, ny: dx / len };
   }
-  // each runner keeps one sideways offset for the whole race: bell-shaped, in [-1, 1],
+  // each runner keeps one sideways offset on the strip for the whole race: bell-shaped, in [-1, 1],
   // seeded by bib so it never flickers. Crowds become a thick dark band, stragglers stay dots.
   const hash = str => { let h = 2166136261; for (const ch of str) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; };
   for (const r of data.runners) {
     const a = hash(r.race + r.bib), b = hash(r.bib + r.race + 'b');
     r.side = (a + b) - 1; // sum of two uniforms: triangular, peaked at the line
   }
-  const SPREAD_MAP = 7, SPREAD_STRIP = 14; // px from the line at the band's edge
+  const SPREAD_STRIP = 14; // px from the strip lane at the band's edge
 
   // --- drawing --------------------------------------------------------------
   let t = data.t_start, highlighted = null;
@@ -348,9 +348,10 @@
       const p = posAt(r, t);
       if (!p) continue;
       if (p.done) finished++; else onCourse++;
+      // on the map dots stay on the line: a sideways offset jumps at sharp corners and
+      // muddles out-and-back roads; the strip is where the spread shows density
       const q = xyAt(courses[r.course], p.arc);
-      const [cx, cy] = toScreen([q.x, q.y]);
-      const x = cx + q.nx * r.side * SPREAD_MAP, y = cy + q.ny * r.side * SPREAD_MAP;
+      const [x, y] = toScreen([q.x, q.y]);
       if (r === highlighted) { hl = [x, y]; continue; }
       ctx.fillStyle = p.done ? doneColor : colors[r.race];
       ctx.globalAlpha = p.done ? 0.3 : 0.55;
