@@ -47,10 +47,19 @@
   .chip .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
   .chip.off { opacity: 0.45; }
   .chip:focus-within { outline: 2px solid var(--hilite); outline-offset: 1px; }
-  #search { display: flex; gap: 6px; align-items: center; }
-  #search input { width: 5.5em; font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px;
+  #search { display: flex; gap: 6px; align-items: center; position: relative; }
+  #search input { width: 12em; font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px;
     background: var(--control-bg); color: var(--ink); }
   #search input:focus { outline: 2px solid var(--hilite); outline-offset: 1px; }
+  #matches { position: absolute; left: 0; top: calc(100% + 4px); min-width: 100%; max-height: 40vh; overflow-y: auto;
+    padding: 4px 0; margin: 0; list-style: none; }
+  #matches li { padding: 4px 12px; cursor: pointer; white-space: nowrap; display: flex; gap: 10px; }
+  #matches li:hover, #matches li.active { background: var(--hilite); color: var(--hilite-ink); }
+  #matches .bibno { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 3.5em; }
+  #matches .who { color: var(--muted); }
+  #matches li:hover .who, #matches li.active .who { color: inherit; }
+  #more { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #more .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
   button { font: inherit; padding: 4px 12px; border-radius: 4px; border: 1px solid var(--line);
     background: var(--control-bg); color: var(--ink); cursor: pointer; }
   button:focus-visible { outline: 2px solid var(--hilite); outline-offset: 1px; }
@@ -85,10 +94,19 @@
     <label class="chip" style="--c: var(--half)"><input type="checkbox" id="f-half" checked><span class="swatch"></span>Half <span id="n-half"></span></label>
     <label class="chip" style="--c: var(--relay)"><input type="checkbox" id="f-relay" checked><span class="swatch"></span>Relay <span id="n-relay"></span></label>
   </div>
+  <div class="card" id="more">
+    <label class="chip"><input type="checkbox" id="s-M" checked>Men</label>
+    <label class="chip"><input type="checkbox" id="s-F" checked>Women</label>
+    <label class="chip"><input type="checkbox" id="s-X" checked>Teams</label>
+    <span class="sep"></span>
+    <label for="division">Division</label>
+    <select id="division"><option value="">All</option></select>
+  </div>
   <div class="card" id="search">
-    <label for="bib">Bib</label>
-    <input id="bib" inputmode="numeric" placeholder="e.g. 2" autocomplete="off">
+    <label for="bib">Find</label>
+    <input id="bib" placeholder="bib, name or team" autocomplete="off">
     <button id="clear" title="Clear highlight">×</button>
+    <ul id="matches" class="card" hidden></ul>
   </div>
 </div>
 <div class="card" id="info" hidden></div>
@@ -187,6 +205,9 @@
   // --- drawing --------------------------------------------------------------
   let t = data.t_start, highlighted = null;
   const enabled = { marathon: true, half: true, relay: true };
+  const sexOn = { M: true, F: true, X: true };
+  let division = '';
+  const shown = r => enabled[r.race] && sexOn[r.sex] !== false && (!division || r.division === division);
   const token = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
   function drawCourse(course, color, width) {
@@ -216,7 +237,7 @@
     }
     let onCourse = 0, finished = 0, hl = null;
     for (const r of data.runners) {
-      if (!enabled[r.race]) continue;
+      if (!shown(r)) continue;
       const p = posAt(r, t);
       if (!p) continue;
       if (p.done) finished++; else onCourse++;
@@ -277,17 +298,67 @@
   });
 
   // --- filters --------------------------------------------------------------
+  const raceLabel = { marathon: 'Marathon', half: 'Half Marathon', relay: 'Team Relay' };
+  const divisionSelect = $('division');
+  function fillDivisions() {
+    const seen = new Map();
+    for (const r of data.runners) {
+      if (!enabled[r.race] || !r.division) continue;
+      const key = `${r.race}|${r.division}`;
+      seen.set(key, (seen.get(key) || 0) + 1);
+    }
+    const keys = [...seen.keys()].sort();
+    const current = division;
+    divisionSelect.innerHTML = '<option value="">All</option>';
+    let group = '';
+    let optgroup = null;
+    for (const key of keys) {
+      const [race, div] = key.split('|');
+      if (race !== group) { group = race; optgroup = document.createElement('optgroup'); optgroup.label = raceLabel[race]; divisionSelect.appendChild(optgroup); }
+      const opt = document.createElement('option');
+      opt.value = div; opt.textContent = `${div} (${seen.get(key)})`;
+      optgroup.appendChild(opt);
+    }
+    // the same division name can exist in several races, so the value stays a bare division
+    divisionSelect.value = [...divisionSelect.options].some(o => o.value === current) ? current : '';
+    division = divisionSelect.value;
+  }
+  divisionSelect.addEventListener('change', () => { division = divisionSelect.value; draw(); });
   for (const race of ['marathon', 'half', 'relay']) {
     const box = $('f-' + race);
-    box.addEventListener('change', () => { enabled[race] = box.checked; box.parentElement.classList.toggle('off', !box.checked); draw(); });
+    box.addEventListener('change', () => {
+      enabled[race] = box.checked; box.parentElement.classList.toggle('off', !box.checked); fillDivisions(); draw();
+    });
   }
+  for (const sex of ['M', 'F', 'X']) {
+    const box = $('s-' + sex);
+    box.addEventListener('change', () => { sexOn[sex] = box.checked; box.parentElement.classList.toggle('off', !box.checked); draw(); });
+  }
+  fillDivisions();
 
   // --- bib highlight --------------------------------------------------------
   const info = $('info');
-  const raceLabel = { marathon: 'Marathon', half: 'Half Marathon', relay: 'Team Relay' };
-  function setHighlight(bib) {
-    const matches = data.runners.filter(r => r.bib === bib && enabled[r.race]);
-    highlighted = matches[0] || null;
+  const matchList = $('matches');
+  function findRunners(query) {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    const exactBib = data.runners.filter(r => r.bib === q);
+    if (exactBib.length) return exactBib;
+    return data.runners.filter(r => r.bib.startsWith(q) || r.name.toLowerCase().includes(q)).slice(0, 12);
+  }
+  function showMatches(matches) {
+    matchList.innerHTML = matches.map((r, i) =>
+      `<li data-i="${i}"><span class="bibno">#${r.bib}</span><span>${r.name}</span><span class="who">${raceLabel[r.race]}${r.division ? ' · ' + r.division : ''}</span></li>`).join('');
+    matchList.hidden = matches.length === 0;
+    matchList.querySelectorAll('li').forEach(li => li.addEventListener('mousedown', e => { e.preventDefault(); pick(matches[Number(li.dataset.i)]); }));
+  }
+  function pick(runner) {
+    matchList.hidden = true;
+    bibInput.value = runner ? `${runner.bib} ${runner.name}` : '';
+    setHighlight(runner);
+  }
+  function setHighlight(runner) {
+    highlighted = runner || null;
     if (!highlighted) { info.hidden = true; draw(); return; }
     const r = highlighted, course = courses[r.course];
     const mats = Object.entries(course.mats).sort((a, b) => a[1] - b[1]);
@@ -297,22 +368,30 @@
       return `<tr><td>${name}</td><td class="tod">${hms(sec)}</td><td>${elapsed(r, sec)}</td></tr>`;
     }).join('');
     const who = r.sex && r.age ? `${r.sex}${r.age} · ` : '';
+    const where = r.city ? ` · ${r.city}, ${r.state}` : '';
     info.innerHTML = `<h2>#${r.bib} ${r.name}</h2>
-      <div class="meta">${raceLabel[r.race]} · ${who}${r.city}, ${r.state}</div>
+      <div class="meta">${raceLabel[r.race]} · ${who}${r.division}${where}</div>
       <table>${rows}</table>
-      <div class="note">Clock time, then elapsed from chip start.${matches.length > 1 ? ` Bib ${bib} also runs in another race; untick this one to see them.` : ''}</div>`;
+      <div class="note">Clock time, then elapsed from chip start.${shown(r) ? '' : ' Hidden by the current filters.'}</div>`;
     info.hidden = false;
     draw();
   }
   const bibInput = $('bib');
-  bibInput.addEventListener('input', () => setHighlight(bibInput.value.trim()));
-  $('clear').addEventListener('click', () => { bibInput.value = ''; setHighlight(''); bibInput.focus(); });
+  bibInput.addEventListener('input', () => {
+    const matches = findRunners(bibInput.value);
+    showMatches(matches);
+    if (matches.length === 1) setHighlight(matches[0]);
+  });
+  bibInput.addEventListener('keydown', e => { if (e.key === 'Enter') { const m = findRunners(bibInput.value); if (m.length) pick(m[0]); } if (e.key === 'Escape') matchList.hidden = true; });
+  bibInput.addEventListener('blur', () => { matchList.hidden = true; });
+  bibInput.addEventListener('focus', () => { if (!highlighted) showMatches(findRunners(bibInput.value)); });
+  $('clear').addEventListener('click', () => { pick(null); bibInput.focus(); });
 
   // open mid-race so the first look shows the field spread out; ?bib= and ?t= still work when served locally
   const q = new URLSearchParams(location.search);
   t = q.get('t') ? Number(q.get('t')) : data.t_start + 5400;
   slider.value = t;
   resize();
-  if (q.get('bib')) { bibInput.value = q.get('bib'); setHighlight(q.get('bib')); }
+  if (q.get('bib')) { const m = findRunners(q.get('bib')); if (m.length) pick(m[0]); }
 })();
 </script>

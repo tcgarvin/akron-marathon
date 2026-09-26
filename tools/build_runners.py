@@ -2,7 +2,7 @@
 
 Usage: python tools/build_runners.py
 
-Each runner becomes {race, course, bib, name, sex, age, splits: [[arc_m, seconds_of_day], ...]}
+Each runner becomes {race, course, bib, name, sex, age, division, splits: [[arc_m, seconds_of_day], ...]}
 using the mat arc lengths of their course in web/courses.json.  ChipStart is the start mat;
 GunStart is dropped.  Runners with fewer than two usable splits are skipped.
 """
@@ -72,6 +72,7 @@ def compact(r: dict, race: str, course_id: str, mats: dict, runners: list) -> No
             "name": r["name"],
             "sex": r["sex"],
             "age": r["age"],
+            "division": r.get("division", ""),
             "city": r["city"],
             "state": r["state"],
             "time": r["time"],
