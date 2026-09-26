@@ -25,8 +25,28 @@ highlight.
     tools/      Python: scrape/parse results, build the compact JSON
     web/        the static viewer
 
-## Open questions
+## Data sources
 
-- Where the split data comes from (results site, whether it publishes
-  intermediate splits, whether scraping is allowed).
-- Which year, and marathon only or the half and relay too.
+- **Splits**: MTEC Results, race 20551 (2026 marathon). `/race/rankedResults`
+  (XHR, 50 per page) lists finishers; `/runner/show?rid=&race=` gives each
+  runner's cumulative table with time of day at ChipStart, 3.1, 7.2, 10.7,
+  12.7, 13.1, 17.3, 21.7, 26M and Finish. Red times are projections and are
+  skipped. Half marathon is race 20552, relay 20554.
+- **Course**: the organiser's Google My Maps, exported as KML
+  (`data/15Dqm...kml`, marathon; `data/1rTa...kml`, half). One line plus
+  Start, Finish, mile and 5k marker points.
+
+## Pipeline
+
+    python tools/fetch_results.py [--limit N] [--cached-only]   # -> data/splits-20551.json (raw pages cached in data/raw/)
+    python tools/build_course.py                                # -> web/course.json
+    python tools/build_runners.py                               # -> web/runners.json
+    (cd web && python -m http.server 8787)                      # http://localhost:8787/?bib=2&t=30600
+
+`t` in the URL is seconds of day. Stdlib only, no dependencies.
+
+## Status
+
+2026-09-26: built during the race with a 58-runner sample; the full pull
+(`fetch_results.py` with no flags, ~300 finishers at 0.4 s each) should wait
+until results are final.

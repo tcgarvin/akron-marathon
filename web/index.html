@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Akron Marathon replay</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --panel: rgba(255,255,255,0.94);
+    --accent: #d9480f; --dot: rgba(30, 90, 200, 0.75); --done: rgba(120,120,120,0.5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #151515; --fg: #eee; --muted: #aaa; --panel: rgba(25,25,25,0.94);
+      --accent: #ff8a4c; --dot: rgba(110, 160, 255, 0.8); --done: rgba(150,150,150,0.5);
+    }
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #map { position: absolute; inset: 0; }
+  #top { position: absolute; top: 12px; left: 16px; right: 16px; display: flex; gap: 8px;
+    align-items: center; flex-wrap: wrap; z-index: 1000; pointer-events: none; }
+  #top > * { pointer-events: auto; }
+  .card { background: var(--panel); border-radius: 8px; padding: 8px 12px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.2); }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  #search { display: flex; gap: 6px; align-items: center; }
+  #search input { width: 6em; font: inherit; padding: 4px 6px; border: 1px solid #999; border-radius: 4px;
+    background: var(--bg); color: var(--fg); }
+  #info { position: absolute; top: 90px; right: 16px; min-width: 200px; max-width: 320px; display: none; z-index: 1000; }
+  .tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
+  #info table { border-collapse: collapse; margin-top: 4px; width: 100%; }
+  #info td { padding: 1px 6px 1px 0; font-variant-numeric: tabular-nums; }
+  #info td:last-child { text-align: right; }
+  #info .muted { color: var(--muted); }
+  #bottom { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 1000;
+    display: flex; gap: 10px; align-items: center; }
+  #bottom button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid #999;
+    background: var(--bg); color: var(--fg); cursor: pointer; }
+  #bottom select { font: inherit; padding: 3px; background: var(--bg); color: var(--fg);
+    border: 1px solid #999; border-radius: 6px; }
+  #clock { font-variant-numeric: tabular-nums; min-width: 6.5em; font-weight: 600; }
+  #slider { flex: 1; }
+  #count { color: var(--muted); white-space: nowrap; }
+  .leaflet-container { background: var(--bg); }
+  @media (max-width: 600px) {
+    #count { display: none; }
+    #info { max-width: calc(100vw - 32px); }
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="top">
+  <div class="card"><h1 id="title">Akron Marathon</h1></div>
+  <div class="card" id="search">
+    <label for="bib">Bib</label>
+    <input id="bib" inputmode="numeric" placeholder="e.g. 2">
+    <button id="clear" title="Clear highlight">×</button>
+  </div>
+</div>
+<div class="card" id="info"></div>
+<div id="bottom" class="card">
+  <button id="play">Play</button>
+  <select id="speed">
+    <option value="30">30×</option>
+    <option value="60" selected>60×</option>
+    <option value="120">120×</option>
+    <option value="300">300×</option>
+  </select>
+  <span id="clock">7:00:00</span>
+  <input id="slider" type="range" min="0" max="1" step="1" value="0">
+  <span id="count"></span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(async function () {
+  const [course, data] = await Promise.all([
+    fetch('course.json').then(r => r.json()),
+    fetch('runners.json').then(r => r.json()),
+  ]);
+  document.getElementById('title').textContent = data.name;
+
+  // --- map ---------------------------------------------------------------
+  const map = L.map('map', { zoomControl: false, zoomSnap: 0.25 });
+  L.control.zoom({ position: 'topright' }).addTo(map);
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
+    className: dark ? 'tiles-dark' : '',
+  }).addTo(map);
+  const latlngs = course.points.map(p => [p[0], p[1]]);
+  // --- geometry: arc metres -> lat/lon -------------------------------------
+  const arcs = course.points.map(p => p[2]);
+  function latLngAt(arc) {
+    if (arc <= 0) return latlngs[0];
+    if (arc >= course.length_m) return latlngs[latlngs.length - 1];
+    let lo = 0, hi = arcs.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (arcs[mid] <= arc) lo = mid; else hi = mid; }
+    const f = (arc - arcs[lo]) / (arcs[hi] - arcs[lo]);
+    return [latlngs[lo][0] + f * (latlngs[hi][0] - latlngs[lo][0]),
+            latlngs[lo][1] + f * (latlngs[hi][1] - latlngs[lo][1])];
+  }
+
+  L.polyline(latlngs, { color: dark ? '#888' : '#555', weight: 3, opacity: 0.8 }).addTo(map);
+  for (const [mile, arc] of Object.entries(course.mile_markers)) {
+    const ll = latLngAt(arc);
+    L.circleMarker(ll, { radius: 3, color: '#999', fillColor: '#999', fillOpacity: 1, weight: 1 })
+      .bindTooltip(`Mile ${mile}`).addTo(map);
+  }
+  map.fitBounds(L.latLngBounds(latlngs), { paddingTopLeft: [20, 70], paddingBottomRight: [20, 80] });
+
+  // --- runner position at a clock time --------------------------------------
+  // Returns arc metres, or null if not on course yet. Past the last split the
+  // runner is parked at that split (the finish for finishers).
+  function arcAt(runner, t) {
+    const s = runner.splits;
+    if (t < s[0][1]) return null;
+    if (t >= s[s.length - 1][1]) return { arc: s[s.length - 1][0], done: true };
+    let i = 0;
+    while (s[i + 1][1] <= t) i++;
+    const f = (t - s[i][1]) / (s[i + 1][1] - s[i][1]);
+    return { arc: s[i][0] + f * (s[i + 1][0] - s[i][0]), done: false };
+  }
+
+  // --- canvas overlay -------------------------------------------------------
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:400';
+  map.getContainer().appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+  function resize() {
+    const size = map.getSize();
+    canvas.width = size.x * devicePixelRatio; canvas.height = size.y * devicePixelRatio;
+    canvas.style.width = size.x + 'px'; canvas.style.height = size.y + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    draw();
+  }
+  map.on('resize zoom move', () => requestAnimationFrame(draw));
+  map.on('resize', resize);
+
+  let t = data.t_start;
+  let highlighted = null;
+  const css = getComputedStyle(document.documentElement);
+
+  function draw() {
+    const size = map.getSize();
+    ctx.clearRect(0, 0, size.x, size.y);
+    const dotColor = css.getPropertyValue('--dot').trim();
+    const doneColor = css.getPropertyValue('--done').trim();
+    const accent = css.getPropertyValue('--accent').trim();
+    let onCourse = 0, finished = 0;
+    let hl = null;
+    for (const r of data.runners) {
+      const p = arcAt(r, t);
+      if (!p) continue;
+      if (p.done) finished++; else onCourse++;
+      const pt = map.latLngToContainerPoint(latLngAt(p.arc));
+      if (r === highlighted) { hl = pt; continue; }
+      ctx.fillStyle = p.done ? doneColor : dotColor;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (hl) {
+      ctx.fillStyle = accent; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hl.x, hl.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.font = 'bold 13px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+      const label = `#${highlighted.bib} ${highlighted.name}`;
+      const w = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(hl.x + 12, hl.y - 10, w + 10, 20);
+      ctx.fillStyle = '#fff'; ctx.fillText(label, hl.x + 17, hl.y);
+    }
+    document.getElementById('count').textContent = `${onCourse} on course · ${finished} finished`;
+    document.getElementById('clock').textContent = hms(t);
+  }
+  function hms(sec) {
+    sec = Math.floor(sec);
+    const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  function raceTime(runner, sec) {
+    const d = sec - runner.splits[0][1];
+    const h = Math.floor(d / 3600), m = Math.floor(d % 3600 / 60), s = d % 60;
+    return (h ? `${h}:${String(m).padStart(2, '0')}` : String(m)) + ':' + String(s).padStart(2, '0');
+  }
+
+  // --- time control ---------------------------------------------------------
+  const slider = document.getElementById('slider');
+  slider.min = data.t_start; slider.max = data.t_end; slider.value = t;
+  slider.addEventListener('input', () => { t = Number(slider.value); draw(); });
+  let playing = false, last = 0;
+  const playBtn = document.getElementById('play');
+  playBtn.addEventListener('click', () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; last = 0; if (playing) requestAnimationFrame(tick); });
+  function tick(now) {
+    if (!playing) return;
+    if (last) {
+      t += (now - last) / 1000 * Number(document.getElementById('speed').value);
+      if (t >= data.t_end) { t = data.t_end; playing = false; playBtn.textContent = 'Play'; }
+      slider.value = t; draw();
+    }
+    last = now;
+    requestAnimationFrame(tick);
+  }
+  document.addEventListener('keydown', e => { if (e.key === ' ' && e.target.tagName !== 'INPUT') { e.preventDefault(); playBtn.click(); } });
+
+  // --- bib highlight --------------------------------------------------------
+  const byBib = new Map(data.runners.map(r => [r.bib, r]));
+  const matNames = Object.entries(course.mats).sort((a, b) => a[1] - b[1]);
+  const info = document.getElementById('info');
+  function setHighlight(bib) {
+    highlighted = byBib.get(bib) || null;
+    if (!highlighted) { info.style.display = 'none'; draw(); return; }
+    const r = highlighted;
+    const rows = r.splits.map(([arc, sec]) => {
+      const mat = matNames.find(m => Math.abs(m[1] - arc) < 1);
+      const name = mat ? mat[0].replace('M', ' mi') : `${(arc / 1609.344).toFixed(1)} mi`;
+      return `<tr><td>${name}</td><td class="muted">${hms(sec)}</td><td>${raceTime(r, sec)}</td></tr>`;
+    }).join('');
+    info.innerHTML = `<strong>#${r.bib} ${r.name}</strong> <span class="muted">${r.sex}${r.age} · ${r.city}, ${r.state}</span>
+      <table>${rows}</table>`;
+    info.style.display = 'block';
+    draw();
+  }
+  const bibInput = document.getElementById('bib');
+  bibInput.addEventListener('input', () => setHighlight(bibInput.value.trim()));
+  document.getElementById('clear').addEventListener('click', () => { bibInput.value = ''; setHighlight(''); });
+
+  // deep link: ?bib=123&t=<seconds of day>
+  const q = new URLSearchParams(location.search);
+  if (q.get('t')) { t = Number(q.get('t')); slider.value = t; }
+  resize();
+  if (q.get('bib')) { bibInput.value = q.get('bib'); setHighlight(q.get('bib')); }
+})();
+</script>
+</body>
+</html>
