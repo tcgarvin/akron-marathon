@@ -38,8 +38,10 @@ highlight.
 
 ## Pipeline
 
-    python tools/fetch_results.py --race 20551 --race 20552 --race 20554 [--limit N] [--cached-only]
+    python tools/fetch_results.py --race 20551 --race 20552 --race 20554 [--delay 1.0] [--workers 1]
+                                  [--limit N | --top-per-division N] [--rid RID] [--cached-only]
                                                   # -> data/splits-<race>.json (raw pages cached in data/raw/)
+                                                  # be a good citizen: one worker, a second between requests
     python tools/build_course.py                  # -> web/courses.json (marathon and half)
     python tools/build_runners.py                 # -> web/runners.json (all races, tagged)
     (cd web && python -m http.server 8787)        # http://localhost:8787/?bib=2&t=30600
@@ -50,6 +52,7 @@ including as a claude.ai artifact (`web/` published as page plus two files).
 
 ## Status
 
-2026-09-26: built during the race on a sample (58 marathon, 20 half, 20
-relay). The full pull should wait until results are final. v2 ideas: filter
-by division and sex (already in the data for individuals), pace colouring.
+2026-09-26: built during the race. v2 has race, sex and division filters,
+search by bib, name or team, overall and division placings computed from the
+loaded field, a linear course strip, and a phone layout. Full-field pull of
+all three races started 12:30 on race day at one request a second.
