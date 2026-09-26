@@ -1,6 +1,6 @@
 """Compact every data/splits-<race>.json into web/runners.json for the viewer.
 
-Usage: python tools/build_runners.py
+Usage: python tools/build_runners.py [--only relay,half,marathon]
 
 Each runner becomes {race, course, bib, name, sex, age, division, splits: [[arc_m, seconds_of_day], ...]}
 using the mat arc lengths of their course in web/courses.json.  ChipStart is the start mat;
@@ -9,6 +9,7 @@ GunStart is dropped.  Runners with fewer than two usable splits are skipped.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -31,9 +32,17 @@ def seconds_of_day(hms: str) -> int:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument(
+        "--only", default="", help="comma-separated race labels to include; default all"
+    )
+    args = ap.parse_args()
+    only = {r.strip() for r in args.only.split(",") if r.strip()}
     courses = json.loads((ROOT / "web" / "courses.json").read_text())
     runners: list[dict] = []
     for race_id, (race, course_id) in RACES.items():
+        if only and race not in only:
+            continue
         path = ROOT / "data" / f"splits-{race_id}.json"
         if not path.exists():
             print(f"no {path.name}, skipping {race}", file=sys.stderr)

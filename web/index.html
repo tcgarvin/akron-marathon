@@ -29,6 +29,7 @@
     --hilite: #ffca28; --hilite-ink: #15171b; --control-bg: #23262d;
   }
   *, *::before, *::after { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--ground); color: var(--ink); font: 14px/1.4 var(--font-body); overflow: hidden; }
   #stage { position: absolute; inset: 0; }
@@ -171,7 +172,11 @@
     fetch('runners.json').then(r => r.json()),
   ]);
   $('subtitle').textContent = data.name;
-  for (const race of ['marathon', 'half', 'relay']) $('n-' + race).textContent = data.counts[race];
+  for (const race of ['marathon', 'half', 'relay']) {
+    $('n-' + race).textContent = data.counts[race];
+    $('f-' + race).parentElement.hidden = data.counts[race] === 0; // races not loaded yet stay out of the way
+  }
+  const halfLoaded = data.counts.half > 0;
 
   // --- projection: lat/lon -> local metres, then metres -> screen ----------
   const allPts = Object.values(courses).flatMap(c => c.points);
@@ -193,7 +198,7 @@
   const STRIP = () => cssPx('--strip-h'), BAR = () => cssPx('--bar-h');
   const isPhone = () => W <= 700;
   function fitView() {
-    const padTop = isPhone() ? 80 : 90, padBottom = STRIP() + BAR() + (isPhone() ? 24 : 24), padSide = isPhone() ? 24 : 40;
+    const padTop = isPhone() ? 80 : 150, padBottom = STRIP() + BAR() + (isPhone() ? 24 : 24), padSide = isPhone() ? 24 : 40;
     const sw = (bounds.x1 - bounds.x0), sh = (bounds.y1 - bounds.y0);
     view.scale = Math.min((W - 2 * padSide) / sw, (H - padTop - padBottom) / sh);
     view.tx = (W - sw * view.scale) / 2 - bounds.x0 * view.scale;
@@ -261,7 +266,8 @@
   function stripGeometry() {
     const stripH = STRIP(), left = 40, right = W - 40, top = H - BAR() - stripH;
     const pxPerM = (right - left) / courses.marathon.length_m;
-    return { left, top, pxPerM, stripH, lanes: { marathon: top + stripH * 0.32, half: top + stripH * 0.72 } };
+    const lanes = halfLoaded ? { marathon: top + stripH * 0.32, half: top + stripH * 0.72 } : { marathon: top + stripH * 0.5 };
+    return { left, top, pxPerM, stripH, lanes };
   }
   function drawStrip(colors, doneColor, courseColor, markerColor, ink) {
     const g = stripGeometry();
@@ -282,7 +288,8 @@
         if (mile % 5 === 0 && !isPhone()) { ctx.font = '600 9px ' + token('--font-body'); ctx.fillText(mile, x + 3, y - 8); }
       }
       ctx.fillStyle = ink; ctx.font = '700 10px ' + token('--font-display');
-      ctx.textAlign = 'left'; ctx.fillText(id === 'half' ? 'HALF' : 'MARATHON · RELAY', g.left, y - 14);
+      const laneName = id === 'half' ? 'HALF' : ['marathon', 'relay'].filter(r => data.counts[r] > 0).join(' · ').toUpperCase();
+      ctx.textAlign = 'left'; ctx.fillText(laneName, g.left, y - 14);
       ctx.textAlign = 'right'; ctx.fillText('FINISH', x1, y + 12);
       ctx.textAlign = 'left'; ctx.fillText('START', g.left, y + 12);
     }
@@ -309,7 +316,7 @@
     const colors = { marathon: token('--marathon'), half: token('--half'), relay: token('--relay') };
     const doneColor = token('--done'), courseColor = token('--course'), markerColor = token('--marker'), ink = token('--ink');
     // half course under the marathon course; they share the first miles
-    drawCourse(courses.half, courseColor, 2);
+    if (halfLoaded) drawCourse(courses.half, courseColor, 2);
     drawCourse(courses.marathon, courseColor, 2);
     ctx.fillStyle = markerColor;
     ctx.font = '600 10px ' + token('--font-body'); ctx.textBaseline = 'middle';
