@@ -525,6 +525,9 @@
   t = q.get('t') ? Number(q.get('t')) : data.t_start + 5400;
   slider.value = t;
   resize();
-  if (q.get('bib')) { const m = findRunners(q.get('bib')); if (m.length) pick(m[0]); }
+  // open on our own team so the page shows what it can do; ?bib= overrides when served locally
+  const DEFAULT_BIB = '8378';
+  const first = findRunners(q.get('bib') || DEFAULT_BIB);
+  if (first.length) pick(first[0]);
 })();
 </script>
