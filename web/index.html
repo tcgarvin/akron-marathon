@@ -97,6 +97,10 @@
     height: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
     display: flex; gap: 10px; align-items: center; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; }
   #clock { font: 700 22px/1 var(--font-display); font-variant-numeric: tabular-nums; min-width: 4.2em; }
+  #timing { display: inline-flex; }
+  #timing button { padding: 5px 9px; border-radius: 0; }
+  #timing button:first-child { border-radius: 4px 0 0 4px; }
+  #timing button:last-child { border-radius: 0 4px 4px 0; border-left: 0; }
   #slider { flex: 1 1 100px; min-width: 60px; accent-color: var(--hilite); }
   #count { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
@@ -118,6 +122,7 @@
     #info tbody { display: table; width: 100%; }
     #bottom button { padding: 6px 10px; }
     #speed { padding: 4px 2px; }
+    #timing button { padding: 5px 7px; font-size: 13px; }
     #clock { font-size: 19px; min-width: 3.8em; }
   }
 </style>
@@ -159,6 +164,10 @@
     <option value="120" selected>120×</option>
     <option value="300">300×</option>
   </select>
+  <div id="timing" role="group" aria-label="Time base">
+    <button id="mode-gun" aria-pressed="true" title="Time of day: where everyone actually was">Gun</button>
+    <button id="mode-chip" aria-pressed="false" title="Chip time: every start lined up at 0:00">Chip</button>
+  </div>
   <span id="clock">7:00:00</span>
   <input id="slider" type="range" min="0" max="1" step="1" value="0" aria-label="Race clock">
   <span id="count"></span>
@@ -261,6 +270,10 @@
 
   // --- drawing --------------------------------------------------------------
   let t = data.t_start, highlighted = null;
+  let mode = 'gun';
+  const chipEnd = Math.max(...data.runners.map(r => r.splits[r.splits.length - 1][1] - r.splits[0][1]));
+  // the clock a runner sees at viewer time t: their own elapsed time in chip mode
+  const clockFor = r => mode === 'chip' ? r.splits[0][1] + t : t;
   const enabled = { marathon: true, half: true, relay: true };
   const sexOn = { M: true, F: true, X: true };
   let division = '';
@@ -276,7 +289,7 @@
   function stripGeometry() {
     const stripH = STRIP(), left = 40, right = W - 40, top = H - BAR() - stripH;
     const pxPerM = (right - left) / courses.marathon.length_m;
-    const lanes = halfLoaded ? { marathon: top + stripH * 0.3, half: top + stripH * 0.72 } : { marathon: top + stripH * 0.52 };
+    const lanes = halfLoaded ? { marathon: top + stripH * 0.28, half: top + stripH * 0.76 } : { marathon: top + stripH * 0.52 };
     return { left, top, pxPerM, stripH, lanes };
   }
   function drawStrip(colors, doneColor, courseColor, markerColor, ink) {
@@ -286,6 +299,7 @@
     ctx.strokeStyle = token('--line'); ctx.lineWidth = 1;
     ctx.strokeRect(16.5, g.top + 0.5, W - 33, g.stripH - 1);
     ctx.font = '700 11px ' + token('--font-display'); ctx.textBaseline = 'middle';
+    const laneSpread = Object.keys(g.lanes).length > 1 ? SPREAD_STRIP * 0.6 : SPREAD_STRIP;
     for (const [id, y] of Object.entries(g.lanes)) {
       const course = courses[id];
       const x1 = g.left + course.length_m * g.pxPerM;
@@ -295,21 +309,21 @@
       for (const [mile, arc] of Object.entries(course.mile_markers)) {
         const x = g.left + arc * g.pxPerM;
         ctx.fillRect(x - 0.5, y - 3, 1, 6);
-        if (mile % 5 === 0 && !isPhone()) { ctx.font = '600 9px ' + token('--font-body'); ctx.fillText(mile, x + 3, y - SPREAD_STRIP - 4); }
+        if (mile % 5 === 0 && !isPhone()) { ctx.font = '600 9px ' + token('--font-body'); ctx.fillText(mile, x + 3, y - laneSpread - 4); }
       }
       ctx.fillStyle = ink; ctx.font = '700 10px ' + token('--font-display');
       const laneName = id === 'half' ? 'HALF' : ['marathon', 'relay'].filter(r => data.counts[r] > 0).join(' · ').toUpperCase();
-      ctx.textAlign = 'left'; ctx.fillText(laneName, g.left, y - SPREAD_STRIP - 4);
-      ctx.textAlign = 'right'; ctx.fillText('FINISH', x1, y + SPREAD_STRIP + 4);
-      ctx.textAlign = 'left'; ctx.fillText('START', g.left, y + SPREAD_STRIP + 4);
+      ctx.textAlign = 'left'; ctx.fillText(laneName, g.left, y - laneSpread - 4);
+      ctx.textAlign = 'right'; ctx.fillText('FINISH', x1, y + laneSpread + 4);
+      ctx.textAlign = 'left'; ctx.fillText('START', g.left, y + laneSpread + 4);
     }
     ctx.textAlign = 'left';
     let hl = null;
     for (const r of data.runners) {
       if (!shown(r)) continue;
-      const p = posAt(r, t);
+      const p = posAt(r, clockFor(r));
       if (!p) continue;
-      const spread = Object.keys(g.lanes).length > 1 ? SPREAD_STRIP * 0.7 : SPREAD_STRIP;
+      const spread = laneSpread;
       const x = g.left + p.arc * g.pxPerM, y = g.lanes[r.course] + r.side * spread;
       if (r === highlighted) { hl = [x, y]; continue; }
       ctx.fillStyle = p.done ? doneColor : colors[r.race];
@@ -345,7 +359,7 @@
     let onCourse = 0, finished = 0, hl = null;
     for (const r of data.runners) {
       if (!shown(r)) continue;
-      const p = posAt(r, t);
+      const p = posAt(r, clockFor(r));
       if (!p) continue;
       if (p.done) finished++; else onCourse++;
       // on the map dots stay on the line: a sideways offset jumps at sharp corners and
@@ -386,6 +400,22 @@
 
   // --- time control ---------------------------------------------------------
   const slider = $('slider');
+  const tEnd = () => mode === 'chip' ? chipEnd : data.t_end;
+  function setMode(next) {
+    if (next === mode) return;
+    // keep the highlighted runner where they are across the switch; otherwise keep the fraction of the race
+    const anchor = highlighted || null;
+    if (anchor) t = next === 'chip' ? t - anchor.splits[0][1] : t + anchor.splits[0][1];
+    else t = next === 'chip' ? Math.max(0, t - data.t_start) : data.t_start + t;
+    mode = next;
+    slider.min = mode === 'chip' ? 0 : data.t_start; slider.max = tEnd();
+    t = Math.max(Number(slider.min), Math.min(tEnd(), t)); slider.value = t;
+    $('mode-gun').setAttribute('aria-pressed', mode === 'gun');
+    $('mode-chip').setAttribute('aria-pressed', mode === 'chip');
+    draw();
+  }
+  $('mode-gun').addEventListener('click', () => setMode('gun'));
+  $('mode-chip').addEventListener('click', () => setMode('chip'));
   slider.min = data.t_start; slider.max = data.t_end; slider.value = t;
   slider.addEventListener('input', () => { t = Number(slider.value); draw(); });
   let playing = false, last = 0;
@@ -399,7 +429,7 @@
     if (!playing) return;
     if (last) {
       t += (now - last) / 1000 * Number($('speed').value);
-      if (t >= data.t_end) { t = data.t_end; setPlaying(false); }
+      if (t >= tEnd()) { t = tEnd(); setPlaying(false); }
       slider.value = t; draw();
     }
     last = now;
@@ -529,5 +559,6 @@
   const DEFAULT_BIB = '8378';
   const first = findRunners(q.get('bib') || DEFAULT_BIB);
   if (first.length) pick(first[0]);
+  if (q.get('mode') === 'chip') setMode('chip');
 })();
 </script>
