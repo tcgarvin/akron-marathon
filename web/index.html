@@ -10,6 +10,7 @@
     --hilite: #e8b100; --hilite-ink: #1d1f24; --control-bg: #ffffff;
     --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
     --font-display: "Barlow Condensed", "Arial Narrow", "Barlow", sans-serif;
+    --gutter: 16px; --strip-h: 96px; --bar-h: 56px;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -27,6 +28,7 @@
     --marathon: #5e93e6; --half: #f0703a; --relay: #2fb894; --done: #5f626b;
     --hilite: #ffca28; --hilite-ink: #15171b; --control-bg: #23262d;
   }
+  *, *::before, *::after { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body { background: var(--ground); color: var(--ink); font: 14px/1.4 var(--font-body); overflow: hidden; }
   #stage { position: absolute; inset: 0; }
@@ -34,79 +36,112 @@
   canvas:active { cursor: grabbing; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     padding: 8px 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12); }
-  #top { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px;
-    display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; pointer-events: none; }
+
+  /* header: title, search, filters toggle in one bar; filters open below it */
+  #top { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: var(--gutter); right: var(--gutter);
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
   #top > * { pointer-events: auto; }
-  h1 { font: 700 20px/1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; margin: 0; }
-  #title small { display: block; font: 500 12px/1.3 var(--font-body); color: var(--muted); text-transform: none; letter-spacing: 0; margin-top: 3px; }
-  #filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  h1 { font: 700 20px/1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; margin: 0; white-space: nowrap; }
+  #subtitle { display: block; font: 500 12px/1.3 var(--font-body); color: var(--muted); margin-top: 3px; }
+  #search { position: relative; display: flex; gap: 6px; align-items: center; flex: 1 1 200px; max-width: 380px; min-width: 0; }
+  #filters-toggle { display: none; }
+  #search input { flex: 1; min-width: 0; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--control-bg); color: var(--ink); }
+  #search input:focus { outline: 2px solid var(--hilite); outline-offset: 1px; }
+  #matches { position: absolute; left: 0; right: 0; top: calc(100% + 6px); max-height: 40vh; overflow-y: auto;
+    padding: 4px 0; margin: 0; list-style: none; z-index: 2; }
+  #matches li { padding: 6px 12px; cursor: pointer; display: flex; gap: 10px; min-width: 0; }
+  #matches li > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #matches li:hover { background: var(--hilite); color: var(--hilite-ink); }
+  #matches .bibno { font-weight: 600; font-variant-numeric: tabular-nums; flex: 0 0 3.5em; }
+  #matches .who { color: var(--muted); margin-left: auto; }
+  #matches li:hover .who { color: inherit; }
+  #filters { display: flex; gap: 6px 14px; align-items: center; flex-wrap: wrap; }
+  #filters .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #filters .group label:not(.chip) { color: var(--muted); }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
     border: 1px solid var(--line); background: var(--control-bg); cursor: pointer; user-select: none;
-    font-weight: 500; font-variant-numeric: tabular-nums; }
+    font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .chip input { position: absolute; opacity: 0; width: 0; height: 0; }
   .chip .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
   .chip.off { opacity: 0.45; }
   .chip:focus-within { outline: 2px solid var(--hilite); outline-offset: 1px; }
-  #search { display: flex; gap: 6px; align-items: center; position: relative; }
-  #search input { width: 12em; font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px;
-    background: var(--control-bg); color: var(--ink); }
-  #search input:focus { outline: 2px solid var(--hilite); outline-offset: 1px; }
-  #matches { position: absolute; left: 0; top: calc(100% + 4px); min-width: 100%; max-height: 40vh; overflow-y: auto;
-    padding: 4px 0; margin: 0; list-style: none; }
-  #matches li { padding: 4px 12px; cursor: pointer; white-space: nowrap; display: flex; gap: 10px; }
-  #matches li:hover, #matches li.active { background: var(--hilite); color: var(--hilite-ink); }
-  #matches .bibno { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 3.5em; }
-  #matches .who { color: var(--muted); }
-  #matches li:hover .who, #matches li.active .who { color: inherit; }
-  #more { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-  #more .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
-  button { font: inherit; padding: 4px 12px; border-radius: 4px; border: 1px solid var(--line);
-    background: var(--control-bg); color: var(--ink); cursor: pointer; }
+  button { font: inherit; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--line);
+    background: var(--control-bg); color: var(--ink); cursor: pointer; white-space: nowrap; }
   button:focus-visible { outline: 2px solid var(--hilite); outline-offset: 1px; }
-  #info { position: absolute; right: 16px; top: calc(96px + env(safe-area-inset-top, 0px)); min-width: 220px; max-width: min(340px, calc(100vw - 32px)); }
-  #info h2 { font: 700 18px/1.1 var(--font-display); margin: 0; }
-  #info .meta { color: var(--muted); margin: 2px 0 6px; }
+  button[aria-pressed="true"] { background: var(--hilite); color: var(--hilite-ink); border-color: var(--hilite); }
+  select { font: inherit; padding: 4px 6px; background: var(--control-bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; max-width: 100%; }
+
+  /* runner card: top right on desktop, a sheet above the strip on phones */
+  #info { position: absolute; right: var(--gutter); top: calc(128px + env(safe-area-inset-top, 0px)); width: 320px; max-width: calc(100vw - 2 * var(--gutter)); }
+  #info header { display: flex; gap: 10px; align-items: baseline; }
+  #info h2 { font: 700 18px/1.1 var(--font-display); margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #info .final { font: 700 18px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+  #info .meta { color: var(--muted); margin: 2px 0 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #info table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-  #info td { padding: 1px 8px 1px 0; }
-  #info td:last-child { text-align: right; padding-right: 0; font-weight: 500; }
-  #info td.tod { color: var(--muted); text-align: right; }
+  #info td { padding: 1px 0; }
+  #info td:nth-child(2) { color: var(--muted); text-align: right; }
+  #info td:last-child { text-align: right; font-weight: 500; padding-left: 12px; }
   #info .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
-  #bottom { position: absolute; left: 16px; right: 16px; bottom: 0;
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); margin-bottom: 8px;
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #splits-toggle { display: none; }
+
+  /* transport bar */
+  #bottom { position: absolute; left: var(--gutter); right: var(--gutter); bottom: 0;
+    height: calc(var(--bar-h) + env(safe-area-inset-bottom, 0px)); padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    display: flex; gap: 10px; align-items: center; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; }
   #clock { font: 700 22px/1 var(--font-display); font-variant-numeric: tabular-nums; min-width: 4.2em; }
-  #slider { flex: 1 1 200px; accent-color: var(--hilite); min-width: 120px; }
+  #slider { flex: 1 1 100px; min-width: 60px; accent-color: var(--hilite); }
   #count { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  select { font: inherit; padding: 3px 6px; background: var(--control-bg); color: var(--ink);
-    border: 1px solid var(--line); border-radius: 4px; }
-  @media (max-width: 600px) {
-    #count { display: none; }
-    #info { top: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; max-width: none; }
-    #info table { font-size: 13px; }
+
+  @media (max-width: 700px) {
+    :root { --strip-h: 80px; --bar-h: 52px; }
+    #top { gap: 6px; }
+    #subtitle, #count { display: none; }
+    h1 { font-size: 17px; }
+    #bar { gap: 8px; }
+    #filters:not(.open) { display: none; }
+    #filters-toggle { display: inline-block; }
+    #search { max-width: none; }
+    #filters { flex-direction: column; align-items: stretch; gap: 8px; }
+    #info { top: auto; bottom: calc(var(--bar-h) + var(--strip-h) + 8px + env(safe-area-inset-bottom, 0px)); left: var(--gutter); right: var(--gutter); width: auto; max-width: none; }
+    #info:not(.open) table, #info:not(.open) .note { display: none; }
+    #splits-toggle { display: inline-block; padding: 2px 8px; font-size: 12px; }
+    #info table { max-height: 34vh; display: block; overflow-y: auto; }
+    #info tbody { display: table; width: 100%; }
+    #bottom button { padding: 6px 10px; }
+    #speed { padding: 4px 2px; }
+    #clock { font-size: 19px; min-width: 3.8em; }
   }
 </style>
 
 <div id="stage"><canvas id="c"></canvas></div>
 <div id="top">
-  <div class="card" id="title"><h1>Akron Marathon Replay</h1><small id="subtitle">Loading…</small></div>
+  <div class="card" id="bar">
+    <div><h1>Akron Marathon Replay</h1><small id="subtitle">Loading…</small></div>
+    <div id="search">
+      <input id="bib" placeholder="Find a bib, name or team" autocomplete="off" aria-label="Find a bib, name or team">
+      <button id="clear" title="Clear highlight">×</button>
+      <ul id="matches" class="card" hidden></ul>
+    </div>
+    <button id="filters-toggle" aria-pressed="false" aria-controls="filters">Filters</button>
+  </div>
   <div class="card" id="filters">
-    <label class="chip" style="--c: var(--marathon)"><input type="checkbox" id="f-marathon" checked><span class="swatch"></span>Marathon <span id="n-marathon"></span></label>
-    <label class="chip" style="--c: var(--half)"><input type="checkbox" id="f-half" checked><span class="swatch"></span>Half <span id="n-half"></span></label>
-    <label class="chip" style="--c: var(--relay)"><input type="checkbox" id="f-relay" checked><span class="swatch"></span>Relay <span id="n-relay"></span></label>
-  </div>
-  <div class="card" id="more">
-    <label class="chip"><input type="checkbox" id="s-M" checked>Men</label>
-    <label class="chip"><input type="checkbox" id="s-F" checked>Women</label>
-    <label class="chip"><input type="checkbox" id="s-X" checked>Teams</label>
-    <span class="sep"></span>
-    <label for="division">Division</label>
-    <select id="division"><option value="">All</option></select>
-  </div>
-  <div class="card" id="search">
-    <label for="bib">Find</label>
-    <input id="bib" placeholder="bib, name or team" autocomplete="off">
-    <button id="clear" title="Clear highlight">×</button>
-    <ul id="matches" class="card" hidden></ul>
+    <div class="group">
+      <label class="chip" style="--c: var(--marathon)"><input type="checkbox" id="f-marathon" checked><span class="swatch"></span>Marathon <span id="n-marathon"></span></label>
+      <label class="chip" style="--c: var(--half)"><input type="checkbox" id="f-half" checked><span class="swatch"></span>Half <span id="n-half"></span></label>
+      <label class="chip" style="--c: var(--relay)"><input type="checkbox" id="f-relay" checked><span class="swatch"></span>Relay <span id="n-relay"></span></label>
+    </div>
+    <div class="group">
+      <label class="chip"><input type="checkbox" id="s-M" checked>Men</label>
+      <label class="chip"><input type="checkbox" id="s-F" checked>Women</label>
+      <label class="chip"><input type="checkbox" id="s-X" checked>Teams</label>
+    </div>
+    <div class="group">
+      <label for="division">Division</label>
+      <select id="division"><option value="">All</option></select>
+    </div>
   </div>
 </div>
 <div class="card" id="info" hidden></div>
@@ -119,7 +154,7 @@
     <option value="300">300×</option>
   </select>
   <span id="clock">7:00:00</span>
-  <input id="slider" type="range" min="0" max="1" step="1" value="0">
+  <input id="slider" type="range" min="0" max="1" step="1" value="0" aria-label="Race clock">
   <span id="count"></span>
 </div>
 
@@ -149,10 +184,11 @@
   // view = { scale (px per metre), tx, ty }
   const canvas = $('c'), ctx = canvas.getContext('2d');
   let W = 0, H = 0, view = { scale: 1, tx: 0, ty: 0 };
-  const STRIP_H = 96; // linear course strip above the transport bar
-  const isPhone = () => W < 600;
+  const cssPx = name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name));
+  const STRIP = () => cssPx('--strip-h'), BAR = () => cssPx('--bar-h');
+  const isPhone = () => W <= 700;
   function fitView() {
-    const padTop = isPhone() ? 150 : 110, padBottom = STRIP_H + (isPhone() ? 200 : 80), padSide = 40;
+    const padTop = isPhone() ? 80 : 90, padBottom = STRIP() + BAR() + (isPhone() ? 24 : 24), padSide = isPhone() ? 24 : 40;
     const sw = (bounds.x1 - bounds.x0), sh = (bounds.y1 - bounds.y0);
     view.scale = Math.min((W - 2 * padSide) / sw, (H - padTop - padBottom) / sh);
     view.tx = (W - sw * view.scale) / 2 - bounds.x0 * view.scale;
@@ -218,17 +254,16 @@
     ctx.stroke();
   }
   function stripGeometry() {
-    const bottomBar = isPhone() ? 96 : 64;
-    const left = 40, right = W - 40, top = H - bottomBar - STRIP_H;
+    const stripH = STRIP(), left = 40, right = W - 40, top = H - BAR() - stripH;
     const pxPerM = (right - left) / courses.marathon.length_m;
-    return { left, top, pxPerM, lanes: { marathon: top + 30, half: top + 68 } };
+    return { left, top, pxPerM, stripH, lanes: { marathon: top + stripH * 0.32, half: top + stripH * 0.72 } };
   }
   function drawStrip(colors, doneColor, courseColor, markerColor, ink) {
     const g = stripGeometry();
     ctx.fillStyle = token('--panel');
-    ctx.fillRect(16, g.top, W - 32, STRIP_H);
+    ctx.fillRect(16, g.top, W - 32, g.stripH);
     ctx.strokeStyle = token('--line'); ctx.lineWidth = 1;
-    ctx.strokeRect(16.5, g.top + 0.5, W - 33, STRIP_H - 1);
+    ctx.strokeRect(16.5, g.top + 0.5, W - 33, g.stripH - 1);
     ctx.font = '700 11px ' + token('--font-display'); ctx.textBaseline = 'middle';
     for (const [id, y] of Object.entries(g.lanes)) {
       const course = courses[id];
@@ -303,8 +338,9 @@
       ctx.font = '700 14px ' + token('--font-display');
       const label = `#${highlighted.bib} ${highlighted.name}`.toUpperCase();
       const w = ctx.measureText(label).width;
-      ctx.fillStyle = token('--hilite'); ctx.fillRect(x + 12, y - 11, w + 12, 22);
-      ctx.fillStyle = token('--hilite-ink'); ctx.fillText(label, x + 18, y);
+      const lx = x + 12 + w + 12 > W - 16 ? x - 12 - w - 12 : x + 12;
+      ctx.fillStyle = token('--hilite'); ctx.fillRect(lx, y - 11, w + 12, 22);
+      ctx.fillStyle = token('--hilite-ink'); ctx.fillText(label, lx + 6, y);
     }
     drawStrip(colors, doneColor, courseColor, markerColor, ink);
     $('count').textContent = `${onCourse} on course · ${finished} finished`;
@@ -418,13 +454,20 @@
     }).join('');
     const who = r.sex && r.age ? `${r.sex}${r.age} · ` : '';
     const where = r.city ? ` · ${r.city}, ${r.state}` : '';
-    info.innerHTML = `<h2>#${r.bib} ${r.name}</h2>
+    const finalTime = r.splits[r.splits.length - 1][0] >= course.length_m - 1 ? elapsed(r, r.splits[r.splits.length - 1][1]) : '';
+    info.innerHTML = `<header><h2>#${r.bib} ${r.name}</h2><span class="final">${finalTime}</span><button id="splits-toggle" aria-expanded="false">Splits</button></header>
       <div class="meta">${raceLabel[r.race]} · ${who}${r.division}${where}</div>
-      <table>${rows}</table>
+      <table><tbody>${rows}</tbody></table>
       <div class="note">Clock time, then elapsed from chip start.${shown(r) ? '' : ' Hidden by the current filters.'}</div>`;
     info.hidden = false;
+    const toggle = $('splits-toggle');
+    toggle.addEventListener('click', () => { info.classList.toggle('open'); toggle.setAttribute('aria-expanded', info.classList.contains('open')); });
     draw();
   }
+  $('filters-toggle').addEventListener('click', () => {
+    const open = $('filters').classList.toggle('open');
+    $('filters-toggle').setAttribute('aria-pressed', open);
+  });
   const bibInput = $('bib');
   bibInput.addEventListener('input', () => {
     const matches = findRunners(bibInput.value);
