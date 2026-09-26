@@ -47,6 +47,7 @@ def main() -> None:
 
 def compact(r: dict, race: str, course_id: str, mats: dict, runners: list) -> None:
     """Append one runner with strictly increasing (arc, time) splits, or skip them."""
+    course_length = mats["Finish"]
     splits = []
     for s in r["splits"]:
         if s["location"] not in mats:
@@ -76,12 +77,32 @@ def compact(r: dict, race: str, course_id: str, mats: dict, runners: list) -> No
             "city": r["city"],
             "state": r["state"],
             "time": r["time"],
+            "finished": clean[-1][0] >= course_length - 1,
             "splits": clean,
         }
     )
 
 
+def rank(runners: list) -> None:
+    """Overall and division place among finishers of the same race, by elapsed chip time.
+
+    Runners without a finish read get no place."""
+    by_group: dict[tuple, list] = {}
+    for r in runners:
+        if not r["finished"]:
+            continue
+        by_group.setdefault((r["race"],), []).append(r)
+        by_group.setdefault((r["race"], r["division"]), []).append(r)
+    for key, group in by_group.items():
+        group.sort(key=lambda r: r["splits"][-1][1] - r["splits"][0][1])
+        field = "place" if len(key) == 1 else "div_place"
+        for i, r in enumerate(group, 1):
+            r[field] = i
+            r[field.replace("place", "total")] = len(group)
+
+
 def write(runners: list, courses: dict) -> None:
+    rank(runners)
     first = min(r["splits"][0][1] for r in runners)
     last = max(r["splits"][-1][1] for r in runners)
     counts = {

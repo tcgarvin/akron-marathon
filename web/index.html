@@ -85,6 +85,10 @@
   #info td:nth-child(2) { color: var(--muted); text-align: right; }
   #info td:last-child { text-align: right; font-weight: 500; padding-left: 12px; }
   #info .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  #info .places { display: flex; gap: 6px 14px; flex-wrap: wrap; align-items: center; margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+  #info .places strong { font: 700 16px/1 var(--font-display); }
+  #info .places .of { color: var(--muted); }
+  #cohort { padding: 2px 8px; font-size: 12px; margin-left: auto; }
   #splits-toggle { display: none; }
 
   /* transport bar */
@@ -107,6 +111,7 @@
     #filters { flex-direction: column; align-items: stretch; gap: 8px; }
     #info { top: auto; bottom: calc(var(--bar-h) + var(--strip-h) + 8px + env(safe-area-inset-bottom, 0px)); left: var(--gutter); right: var(--gutter); width: auto; max-width: none; }
     #info:not(.open) table, #info:not(.open) .note { display: none; }
+    #info .places { margin-bottom: 0; margin-top: 4px; }
     #splits-toggle { display: inline-block; padding: 2px 8px; font-size: 12px; }
     #info table { max-height: 34vh; display: block; overflow-y: auto; }
     #info tbody { display: table; width: 100%; }
@@ -455,13 +460,27 @@
     const who = r.sex && r.age ? `${r.sex}${r.age} · ` : '';
     const where = r.city ? ` · ${r.city}, ${r.state}` : '';
     const finalTime = r.splits[r.splits.length - 1][0] >= course.length_m - 1 ? elapsed(r, r.splits[r.splits.length - 1][1]) : '';
+    const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+    const places = r.finished ? `<div class="places">
+        <span><strong>${ordinal(r.place)}</strong> <span class="of">of ${r.total} in the ${raceLabel[r.race]}</span></span>
+        <span><strong>${ordinal(r.div_place)}</strong> <span class="of">of ${r.div_total} in ${r.division}</span></span>
+        <button id="cohort" aria-pressed="${division === r.division}">${division === r.division ? 'Showing' : 'Show'} ${r.division} only</button>
+      </div>` : '';
     info.innerHTML = `<header><h2>#${r.bib} ${r.name}</h2><span class="final">${finalTime}</span><button id="splits-toggle" aria-expanded="false">Splits</button></header>
-      <div class="meta">${raceLabel[r.race]} · ${who}${r.division}${where}</div>
+      <div class="meta">${raceLabel[r.race]} · ${who}${r.division}${where}</div>${places}
       <table><tbody>${rows}</tbody></table>
-      <div class="note">Clock time, then elapsed from chip start.${shown(r) ? '' : ' Hidden by the current filters.'}</div>`;
+      <div class="note">Clock time, then elapsed from chip start. Places are among the runners loaded here.${shown(r) ? '' : ' Hidden by the current filters.'}</div>`;
     info.hidden = false;
     const toggle = $('splits-toggle');
     toggle.addEventListener('click', () => { info.classList.toggle('open'); toggle.setAttribute('aria-expanded', info.classList.contains('open')); });
+    const cohort = $('cohort');
+    if (cohort) cohort.addEventListener('click', () => {
+      // one tap narrows the field to this runner's race and division; a second tap widens it again
+      const on = division !== r.division;
+      for (const race of ['marathon', 'half', 'relay']) { const box = $('f-' + race); box.checked = on ? race === r.race : true; box.dispatchEvent(new Event('change')); }
+      division = on ? r.division : ''; divisionSelect.value = division;
+      setHighlight(r);
+    });
     draw();
   }
   $('filters-toggle').addEventListener('click', () => {
