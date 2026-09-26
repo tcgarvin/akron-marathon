@@ -14,10 +14,10 @@ highlight.
    `t` is the linear interpolation of distance between the two mats that
    bracket `t`. Missing splits are skipped (interpolate across the gap).
    Before the start mat and after the finish mat the runner is parked.
-4. **Viewer** — a static web page: map (Leaflet or plain canvas over an
-   image of the course), one dot per bib, a slider for race clock, play /
-   pause / speed, a bib search that highlights one runner and shows their
-   splits. Everything is client-side; data ships as one compact JSON.
+4. **Viewer** — a static page: the two course lines on a canvas, one dot
+   per bib coloured by race, a race-clock slider, play / pause / speed, race
+   filter chips, and a bib search that highlights one runner and shows their
+   splits. Drag to pan, wheel to zoom, double-click to refit.
 
 ## Layout
 
@@ -38,15 +38,18 @@ highlight.
 
 ## Pipeline
 
-    python tools/fetch_results.py [--limit N] [--cached-only]   # -> data/splits-20551.json (raw pages cached in data/raw/)
-    python tools/build_course.py                                # -> web/course.json
-    python tools/build_runners.py                               # -> web/runners.json
-    (cd web && python -m http.server 8787)                      # http://localhost:8787/?bib=2&t=30600
+    python tools/fetch_results.py --race 20551 --race 20552 --race 20554 [--limit N] [--cached-only]
+                                                  # -> data/splits-<race>.json (raw pages cached in data/raw/)
+    python tools/build_course.py                  # -> web/courses.json (marathon and half)
+    python tools/build_runners.py                 # -> web/runners.json (all races, tagged)
+    (cd web && python -m http.server 8787)        # http://localhost:8787/?bib=2&t=30600
 
-`t` in the URL is seconds of day. Stdlib only, no dependencies.
+`t` in the URL is seconds of day. Stdlib only, no dependencies. The viewer is
+a single canvas page with no map tiles, so it runs anywhere static files do,
+including as a claude.ai artifact (`web/` published as page plus two files).
 
 ## Status
 
-2026-09-26: built during the race with a 58-runner sample; the full pull
-(`fetch_results.py` with no flags, ~300 finishers at 0.4 s each) should wait
-until results are final.
+2026-09-26: built during the race on a sample (58 marathon, 20 half, 20
+relay). The full pull should wait until results are final. v2 ideas: filter
+by division and sex (already in the data for individuals), pace colouring.

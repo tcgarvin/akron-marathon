@@ -1,72 +1,103 @@
-<!doctype html>
-<html lang="en">
-<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Akron Marathon replay</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<title>Akron Marathon Replay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
   :root {
-    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --panel: rgba(255,255,255,0.94);
-    --accent: #d9480f; --dot: rgba(30, 90, 200, 0.75); --done: rgba(120,120,120,0.5);
+    --ground: #f5f3ee; --panel: rgba(255, 253, 248, 0.94); --ink: #1d1f24; --muted: #6b6e78;
+    --line: #c9c6bd; --course: #4a4d56; --marker: #9a9da6;
+    --marathon: #1f5fbf; --half: #c2410c; --relay: #0f8a6a; --done: #a3a6ad;
+    --hilite: #e8b100; --hilite-ink: #1d1f24; --control-bg: #ffffff;
+    --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+    --font-display: "Barlow Condensed", "Arial Narrow", "Barlow", sans-serif;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #151515; --fg: #eee; --muted: #aaa; --panel: rgba(25,25,25,0.94);
-      --accent: #ff8a4c; --dot: rgba(110, 160, 255, 0.8); --done: rgba(150,150,150,0.5);
+      color-scheme: dark;
+      --ground: #15171b; --panel: rgba(28, 30, 36, 0.94); --ink: #ecebe6; --muted: #9a9da6;
+      --line: #3a3d45; --course: #b8bac2; --marker: #6b6e78;
+      --marathon: #5e93e6; --half: #f0703a; --relay: #2fb894; --done: #5f626b;
+      --hilite: #ffca28; --hilite-ink: #15171b; --control-bg: #23262d;
     }
   }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
-    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #map { position: absolute; inset: 0; }
-  #top { position: absolute; top: 12px; left: 16px; right: 16px; display: flex; gap: 8px;
-    align-items: center; flex-wrap: wrap; z-index: 1000; pointer-events: none; }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #15171b; --panel: rgba(28, 30, 36, 0.94); --ink: #ecebe6; --muted: #9a9da6;
+    --line: #3a3d45; --course: #b8bac2; --marker: #6b6e78;
+    --marathon: #5e93e6; --half: #f0703a; --relay: #2fb894; --done: #5f626b;
+    --hilite: #ffca28; --hilite-ink: #15171b; --control-bg: #23262d;
+  }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--ground); color: var(--ink); font: 14px/1.4 var(--font-body); overflow: hidden; }
+  #stage { position: absolute; inset: 0; }
+  canvas { display: block; touch-action: none; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 8px 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12); }
+  #top { position: absolute; top: calc(12px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px;
+    display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; pointer-events: none; }
   #top > * { pointer-events: auto; }
-  .card { background: var(--panel); border-radius: 8px; padding: 8px 12px;
-    box-shadow: 0 1px 6px rgba(0,0,0,0.2); }
-  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  h1 { font: 700 20px/1 var(--font-display); letter-spacing: 0.02em; text-transform: uppercase; margin: 0; }
+  #title small { display: block; font: 500 12px/1.3 var(--font-body); color: var(--muted); text-transform: none; letter-spacing: 0; margin-top: 3px; }
+  #filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--control-bg); cursor: pointer; user-select: none;
+    font-weight: 500; font-variant-numeric: tabular-nums; }
+  .chip input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .chip .swatch { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  .chip.off { opacity: 0.45; }
+  .chip:focus-within { outline: 2px solid var(--hilite); outline-offset: 1px; }
   #search { display: flex; gap: 6px; align-items: center; }
-  #search input { width: 6em; font: inherit; padding: 4px 6px; border: 1px solid #999; border-radius: 4px;
-    background: var(--bg); color: var(--fg); }
-  #info { position: absolute; top: 90px; right: 16px; min-width: 200px; max-width: 320px; display: none; z-index: 1000; }
-  .tiles-dark { filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9); }
-  #info table { border-collapse: collapse; margin-top: 4px; width: 100%; }
-  #info td { padding: 1px 6px 1px 0; font-variant-numeric: tabular-nums; }
-  #info td:last-child { text-align: right; }
-  #info .muted { color: var(--muted); }
-  #bottom { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 1000;
-    display: flex; gap: 10px; align-items: center; }
-  #bottom button { font: inherit; padding: 4px 12px; border-radius: 6px; border: 1px solid #999;
-    background: var(--bg); color: var(--fg); cursor: pointer; }
-  #bottom select { font: inherit; padding: 3px; background: var(--bg); color: var(--fg);
-    border: 1px solid #999; border-radius: 6px; }
-  #clock { font-variant-numeric: tabular-nums; min-width: 6.5em; font-weight: 600; }
-  #slider { flex: 1; }
-  #count { color: var(--muted); white-space: nowrap; }
-  .leaflet-container { background: var(--bg); }
+  #search input { width: 5.5em; font: inherit; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px;
+    background: var(--control-bg); color: var(--ink); }
+  #search input:focus { outline: 2px solid var(--hilite); outline-offset: 1px; }
+  button { font: inherit; padding: 4px 12px; border-radius: 4px; border: 1px solid var(--line);
+    background: var(--control-bg); color: var(--ink); cursor: pointer; }
+  button:focus-visible { outline: 2px solid var(--hilite); outline-offset: 1px; }
+  #info { position: absolute; right: 16px; top: calc(96px + env(safe-area-inset-top, 0px)); min-width: 220px; max-width: min(340px, calc(100vw - 32px)); }
+  #info h2 { font: 700 18px/1.1 var(--font-display); margin: 0; }
+  #info .meta { color: var(--muted); margin: 2px 0 6px; }
+  #info table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  #info td { padding: 1px 8px 1px 0; }
+  #info td:last-child { text-align: right; padding-right: 0; font-weight: 500; }
+  #info td.tod { color: var(--muted); text-align: right; }
+  #info .note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  #bottom { position: absolute; left: 16px; right: 16px; bottom: 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); margin-bottom: 8px;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  #clock { font: 700 22px/1 var(--font-display); font-variant-numeric: tabular-nums; min-width: 4.2em; }
+  #slider { flex: 1 1 200px; accent-color: var(--hilite); min-width: 120px; }
+  #count { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  select { font: inherit; padding: 3px 6px; background: var(--control-bg); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px; }
   @media (max-width: 600px) {
     #count { display: none; }
-    #info { max-width: calc(100vw - 32px); }
+    #info { top: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; max-width: none; }
+    #info table { font-size: 13px; }
   }
 </style>
-</head>
-<body>
-<div id="map"></div>
+
+<div id="stage"><canvas id="c"></canvas></div>
 <div id="top">
-  <div class="card"><h1 id="title">Akron Marathon</h1></div>
+  <div class="card" id="title"><h1>Akron Marathon Replay</h1><small id="subtitle">Loading…</small></div>
+  <div class="card" id="filters">
+    <label class="chip" style="--c: var(--marathon)"><input type="checkbox" id="f-marathon" checked><span class="swatch"></span>Marathon <span id="n-marathon"></span></label>
+    <label class="chip" style="--c: var(--half)"><input type="checkbox" id="f-half" checked><span class="swatch"></span>Half <span id="n-half"></span></label>
+    <label class="chip" style="--c: var(--relay)"><input type="checkbox" id="f-relay" checked><span class="swatch"></span>Relay <span id="n-relay"></span></label>
+  </div>
   <div class="card" id="search">
     <label for="bib">Bib</label>
-    <input id="bib" inputmode="numeric" placeholder="e.g. 2">
+    <input id="bib" inputmode="numeric" placeholder="e.g. 2" autocomplete="off">
     <button id="clear" title="Clear highlight">×</button>
   </div>
 </div>
-<div class="card" id="info"></div>
+<div class="card" id="info" hidden></div>
 <div id="bottom" class="card">
   <button id="play">Play</button>
-  <select id="speed">
+  <select id="speed" title="Playback speed">
     <option value="30">30×</option>
-    <option value="60" selected>60×</option>
-    <option value="120">120×</option>
+    <option value="60">60×</option>
+    <option value="120" selected>120×</option>
     <option value="300">300×</option>
   </select>
   <span id="clock">7:00:00</span>
@@ -74,48 +105,67 @@
   <span id="count"></span>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (async function () {
-  const [course, data] = await Promise.all([
-    fetch('course.json').then(r => r.json()),
+  const $ = id => document.getElementById(id);
+  const [courses, data] = await Promise.all([
+    fetch('courses.json').then(r => r.json()),
     fetch('runners.json').then(r => r.json()),
   ]);
-  document.getElementById('title').textContent = data.name;
+  $('subtitle').textContent = data.name;
+  for (const race of ['marathon', 'half', 'relay']) $('n-' + race).textContent = data.counts[race];
 
-  // --- map ---------------------------------------------------------------
-  const map = L.map('map', { zoomControl: false, zoomSnap: 0.25 });
-  L.control.zoom({ position: 'topright' }).addTo(map);
-  const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
-    className: dark ? 'tiles-dark' : '',
-  }).addTo(map);
-  const latlngs = course.points.map(p => [p[0], p[1]]);
-  // --- geometry: arc metres -> lat/lon -------------------------------------
-  const arcs = course.points.map(p => p[2]);
-  function latLngAt(arc) {
-    if (arc <= 0) return latlngs[0];
-    if (arc >= course.length_m) return latlngs[latlngs.length - 1];
-    let lo = 0, hi = arcs.length - 1;
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (arcs[mid] <= arc) lo = mid; else hi = mid; }
-    const f = (arc - arcs[lo]) / (arcs[hi] - arcs[lo]);
-    return [latlngs[lo][0] + f * (latlngs[hi][0] - latlngs[lo][0]),
-            latlngs[lo][1] + f * (latlngs[hi][1] - latlngs[lo][1])];
+  // --- projection: lat/lon -> local metres, then metres -> screen ----------
+  const allPts = Object.values(courses).flatMap(c => c.points);
+  const lat0 = allPts.reduce((a, p) => a + p[0], 0) / allPts.length;
+  const lon0 = allPts.reduce((a, p) => a + p[1], 0) / allPts.length;
+  const kx = 111320 * Math.cos(lat0 * Math.PI / 180), ky = 110540;
+  const toXY = p => [(p[1] - lon0) * kx, -(p[0] - lat0) * ky];
+  for (const c of Object.values(courses)) {
+    c.xy = c.points.map(toXY);
+    c.arcs = c.points.map(p => p[2]);
   }
+  const xs = allPts.map(p => toXY(p)[0]), ys = allPts.map(p => toXY(p)[1]);
+  const bounds = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
 
-  L.polyline(latlngs, { color: dark ? '#888' : '#555', weight: 3, opacity: 0.8 }).addTo(map);
-  for (const [mile, arc] of Object.entries(course.mile_markers)) {
-    const ll = latLngAt(arc);
-    L.circleMarker(ll, { radius: 3, color: '#999', fillColor: '#999', fillOpacity: 1, weight: 1 })
-      .bindTooltip(`Mile ${mile}`).addTo(map);
+  // view = { scale (px per metre), tx, ty }
+  const canvas = $('c'), ctx = canvas.getContext('2d');
+  let W = 0, H = 0, view = { scale: 1, tx: 0, ty: 0 };
+  const isPhone = () => W < 600;
+  function fitView() {
+    const padTop = isPhone() ? 150 : 110, padBottom = isPhone() ? 260 : 90, padSide = 40;
+    const sw = (bounds.x1 - bounds.x0), sh = (bounds.y1 - bounds.y0);
+    view.scale = Math.min((W - 2 * padSide) / sw, (H - padTop - padBottom) / sh);
+    view.tx = (W - sw * view.scale) / 2 - bounds.x0 * view.scale;
+    view.ty = padTop + (H - padTop - padBottom - sh * view.scale) / 2 - bounds.y0 * view.scale;
   }
-  map.fitBounds(L.latLngBounds(latlngs), { paddingTopLeft: [20, 70], paddingBottomRight: [20, 80] });
+  const toScreen = ([x, y]) => [x * view.scale + view.tx, y * view.scale + view.ty];
+  function resize() {
+    W = innerWidth; H = innerHeight;
+    canvas.width = W * devicePixelRatio; canvas.height = H * devicePixelRatio;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    fitView(); draw();
+  }
+  addEventListener('resize', resize);
+
+  // pan and zoom
+  let drag = null;
+  canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => {
+    if (!drag) return;
+    view.tx += e.clientX - drag.x; view.ty += e.clientY - drag.y; drag = { x: e.clientX, y: e.clientY }; draw();
+  });
+  canvas.addEventListener('pointerup', () => { drag = null; });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const f = Math.exp(-e.deltaY * 0.0015);
+    view.tx = e.clientX - (e.clientX - view.tx) * f; view.ty = e.clientY - (e.clientY - view.ty) * f; view.scale *= f; draw();
+  }, { passive: false });
+  canvas.addEventListener('dblclick', () => { fitView(); draw(); });
 
   // --- runner position at a clock time --------------------------------------
-  // Returns arc metres, or null if not on course yet. Past the last split the
-  // runner is parked at that split (the finish for finishers).
-  function arcAt(runner, t) {
+  function posAt(runner, t) {
     const s = runner.splits;
     if (t < s[0][1]) return null;
     if (t >= s[s.length - 1][1]) return { arc: s[s.length - 1][0], done: true };
@@ -124,113 +174,145 @@
     const f = (t - s[i][1]) / (s[i + 1][1] - s[i][1]);
     return { arc: s[i][0] + f * (s[i + 1][0] - s[i][0]), done: false };
   }
-
-  // --- canvas overlay -------------------------------------------------------
-  const canvas = document.createElement('canvas');
-  canvas.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:400';
-  map.getContainer().appendChild(canvas);
-  const ctx = canvas.getContext('2d');
-  function resize() {
-    const size = map.getSize();
-    canvas.width = size.x * devicePixelRatio; canvas.height = size.y * devicePixelRatio;
-    canvas.style.width = size.x + 'px'; canvas.style.height = size.y + 'px';
-    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-    draw();
+  function xyAt(course, arc) {
+    const { xy, arcs } = course;
+    if (arc <= 0) return xy[0];
+    if (arc >= course.length_m) return xy[xy.length - 1];
+    let lo = 0, hi = arcs.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (arcs[mid] <= arc) lo = mid; else hi = mid; }
+    const f = (arc - arcs[lo]) / (arcs[hi] - arcs[lo]);
+    return [xy[lo][0] + f * (xy[hi][0] - xy[lo][0]), xy[lo][1] + f * (xy[hi][1] - xy[lo][1])];
   }
-  map.on('resize zoom move', () => requestAnimationFrame(draw));
-  map.on('resize', resize);
 
-  let t = data.t_start;
-  let highlighted = null;
-  const css = getComputedStyle(document.documentElement);
+  // --- drawing --------------------------------------------------------------
+  let t = data.t_start, highlighted = null;
+  const enabled = { marathon: true, half: true, relay: true };
+  const token = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
+  function drawCourse(course, color, width) {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    course.xy.forEach((p, i) => { const [x, y] = toScreen(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
   function draw() {
-    const size = map.getSize();
-    ctx.clearRect(0, 0, size.x, size.y);
-    const dotColor = css.getPropertyValue('--dot').trim();
-    const doneColor = css.getPropertyValue('--done').trim();
-    const accent = css.getPropertyValue('--accent').trim();
-    let onCourse = 0, finished = 0;
-    let hl = null;
+    ctx.clearRect(0, 0, W, H);
+    const colors = { marathon: token('--marathon'), half: token('--half'), relay: token('--relay') };
+    const doneColor = token('--done'), courseColor = token('--course'), markerColor = token('--marker'), ink = token('--ink');
+    // half course under the marathon course; they share the first miles
+    drawCourse(courses.half, courseColor, 2);
+    drawCourse(courses.marathon, courseColor, 2);
+    ctx.fillStyle = markerColor;
+    ctx.font = '600 10px ' + token('--font-body'); ctx.textBaseline = 'middle';
+    for (const [mile, arc] of Object.entries(courses.marathon.mile_markers)) {
+      const [x, y] = toScreen(xyAt(courses.marathon, arc));
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+      if (view.scale > 0.02 && mile % 5 === 0) ctx.fillText(mile, x + 6, y);
+    }
+    for (const which of ['start', 'finish']) {
+      const [x, y] = toScreen(toXY(courses.marathon[which]));
+      ctx.fillStyle = ink; ctx.font = '700 11px ' + token('--font-display');
+      ctx.fillText(which.toUpperCase(), x + 8, y + (which === 'start' ? -8 : 8));
+    }
+    let onCourse = 0, finished = 0, hl = null;
     for (const r of data.runners) {
-      const p = arcAt(r, t);
+      if (!enabled[r.race]) continue;
+      const p = posAt(r, t);
       if (!p) continue;
       if (p.done) finished++; else onCourse++;
-      const pt = map.latLngToContainerPoint(latLngAt(p.arc));
-      if (r === highlighted) { hl = pt; continue; }
-      ctx.fillStyle = p.done ? doneColor : dotColor;
-      ctx.beginPath(); ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2); ctx.fill();
+      const [x, y] = toScreen(xyAt(courses[r.course], p.arc));
+      if (r === highlighted) { hl = [x, y]; continue; }
+      ctx.fillStyle = p.done ? doneColor : colors[r.race];
+      ctx.globalAlpha = p.done ? 0.5 : 0.85;
+      ctx.beginPath(); ctx.arc(x, y, 3.5, 0, Math.PI * 2); ctx.fill();
     }
+    ctx.globalAlpha = 1;
     if (hl) {
-      ctx.fillStyle = accent; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(hl.x, hl.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.font = 'bold 13px system-ui, sans-serif'; ctx.textBaseline = 'middle';
-      const label = `#${highlighted.bib} ${highlighted.name}`;
+      const [x, y] = hl;
+      ctx.fillStyle = token('--hilite'); ctx.strokeStyle = token('--hilite-ink'); ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.font = '700 14px ' + token('--font-display');
+      const label = `#${highlighted.bib} ${highlighted.name}`.toUpperCase();
       const w = ctx.measureText(label).width;
-      ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(hl.x + 12, hl.y - 10, w + 10, 20);
-      ctx.fillStyle = '#fff'; ctx.fillText(label, hl.x + 17, hl.y);
+      ctx.fillStyle = token('--hilite'); ctx.fillRect(x + 12, y - 11, w + 12, 22);
+      ctx.fillStyle = token('--hilite-ink'); ctx.fillText(label, x + 18, y);
     }
-    document.getElementById('count').textContent = `${onCourse} on course · ${finished} finished`;
-    document.getElementById('clock').textContent = hms(t);
+    $('count').textContent = `${onCourse} on course · ${finished} finished`;
+    $('clock').textContent = hms(t);
   }
   function hms(sec) {
     sec = Math.floor(sec);
     const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   }
-  function raceTime(runner, sec) {
+  function elapsed(runner, sec) {
     const d = sec - runner.splits[0][1];
     const h = Math.floor(d / 3600), m = Math.floor(d % 3600 / 60), s = d % 60;
     return (h ? `${h}:${String(m).padStart(2, '0')}` : String(m)) + ':' + String(s).padStart(2, '0');
   }
 
   // --- time control ---------------------------------------------------------
-  const slider = document.getElementById('slider');
+  const slider = $('slider');
   slider.min = data.t_start; slider.max = data.t_end; slider.value = t;
   slider.addEventListener('input', () => { t = Number(slider.value); draw(); });
   let playing = false, last = 0;
-  const playBtn = document.getElementById('play');
-  playBtn.addEventListener('click', () => { playing = !playing; playBtn.textContent = playing ? 'Pause' : 'Play'; last = 0; if (playing) requestAnimationFrame(tick); });
+  const playBtn = $('play');
+  function setPlaying(on) {
+    playing = on; playBtn.textContent = on ? 'Pause' : 'Play'; last = 0;
+    if (on) requestAnimationFrame(tick);
+  }
+  playBtn.addEventListener('click', () => setPlaying(!playing));
   function tick(now) {
     if (!playing) return;
     if (last) {
-      t += (now - last) / 1000 * Number(document.getElementById('speed').value);
-      if (t >= data.t_end) { t = data.t_end; playing = false; playBtn.textContent = 'Play'; }
+      t += (now - last) / 1000 * Number($('speed').value);
+      if (t >= data.t_end) { t = data.t_end; setPlaying(false); }
       slider.value = t; draw();
     }
     last = now;
     requestAnimationFrame(tick);
   }
-  document.addEventListener('keydown', e => { if (e.key === ' ' && e.target.tagName !== 'INPUT') { e.preventDefault(); playBtn.click(); } });
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' && e.target.tagName !== 'INPUT') { e.preventDefault(); setPlaying(!playing); }
+  });
+
+  // --- filters --------------------------------------------------------------
+  for (const race of ['marathon', 'half', 'relay']) {
+    const box = $('f-' + race);
+    box.addEventListener('change', () => { enabled[race] = box.checked; box.parentElement.classList.toggle('off', !box.checked); draw(); });
+  }
 
   // --- bib highlight --------------------------------------------------------
-  const byBib = new Map(data.runners.map(r => [r.bib, r]));
-  const matNames = Object.entries(course.mats).sort((a, b) => a[1] - b[1]);
-  const info = document.getElementById('info');
+  const info = $('info');
+  const raceLabel = { marathon: 'Marathon', half: 'Half Marathon', relay: 'Team Relay' };
   function setHighlight(bib) {
-    highlighted = byBib.get(bib) || null;
-    if (!highlighted) { info.style.display = 'none'; draw(); return; }
-    const r = highlighted;
+    const matches = data.runners.filter(r => r.bib === bib && enabled[r.race]);
+    highlighted = matches[0] || null;
+    if (!highlighted) { info.hidden = true; draw(); return; }
+    const r = highlighted, course = courses[r.course];
+    const mats = Object.entries(course.mats).sort((a, b) => a[1] - b[1]);
     const rows = r.splits.map(([arc, sec]) => {
-      const mat = matNames.find(m => Math.abs(m[1] - arc) < 1);
-      const name = mat ? mat[0].replace('M', ' mi') : `${(arc / 1609.344).toFixed(1)} mi`;
-      return `<tr><td>${name}</td><td class="muted">${hms(sec)}</td><td>${raceTime(r, sec)}</td></tr>`;
+      const mat = mats.find(m => Math.abs(m[1] - arc) < 1);
+      const name = mat ? mat[0].replace(/M$/, ' mi') : `${(arc / 1609.344).toFixed(1)} mi`;
+      return `<tr><td>${name}</td><td class="tod">${hms(sec)}</td><td>${elapsed(r, sec)}</td></tr>`;
     }).join('');
-    info.innerHTML = `<strong>#${r.bib} ${r.name}</strong> <span class="muted">${r.sex}${r.age} · ${r.city}, ${r.state}</span>
-      <table>${rows}</table>`;
-    info.style.display = 'block';
+    const who = r.sex && r.age ? `${r.sex}${r.age} · ` : '';
+    info.innerHTML = `<h2>#${r.bib} ${r.name}</h2>
+      <div class="meta">${raceLabel[r.race]} · ${who}${r.city}, ${r.state}</div>
+      <table>${rows}</table>
+      <div class="note">Clock time, then elapsed from chip start.${matches.length > 1 ? ` Bib ${bib} also runs in another race; untick this one to see them.` : ''}</div>`;
+    info.hidden = false;
     draw();
   }
-  const bibInput = document.getElementById('bib');
+  const bibInput = $('bib');
   bibInput.addEventListener('input', () => setHighlight(bibInput.value.trim()));
-  document.getElementById('clear').addEventListener('click', () => { bibInput.value = ''; setHighlight(''); });
+  $('clear').addEventListener('click', () => { bibInput.value = ''; setHighlight(''); bibInput.focus(); });
 
-  // deep link: ?bib=123&t=<seconds of day>
+  // open mid-race so the first look shows the field spread out; ?bib= and ?t= still work when served locally
   const q = new URLSearchParams(location.search);
-  if (q.get('t')) { t = Number(q.get('t')); slider.value = t; }
+  t = q.get('t') ? Number(q.get('t')) : data.t_start + 5400;
+  slider.value = t;
   resize();
   if (q.get('bib')) { bibInput.value = q.get('bib'); setHighlight(q.get('bib')); }
 })();
 </script>
-</body>
-</html>

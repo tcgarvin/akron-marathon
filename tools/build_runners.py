@@ -1,19 +1,25 @@
-"""Compact data/splits-<race>.json into web/runners.json for the viewer.
+"""Compact every data/splits-<race>.json into web/runners.json for the viewer.
 
-Usage: python tools/build_runners.py [--race 20551]
+Usage: python tools/build_runners.py
 
-Each runner becomes {bib, name, sex, age, splits: [[arc_m, seconds_of_day], ...]}
-using the mat arc lengths in web/course.json.  ChipStart is the start mat;
+Each runner becomes {race, course, bib, name, sex, age, splits: [[arc_m, seconds_of_day], ...]}
+using the mat arc lengths of their course in web/courses.json.  ChipStart is the start mat;
 GunStart is dropped.  Runners with fewer than two usable splits are skipped.
 """
+
 from __future__ import annotations
 
-import argparse
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# MTEC race id -> (race label, course id)
+RACES = {
+    "20551": ("marathon", "marathon"),
+    "20552": ("half", "half"),
+    "20554": ("relay", "marathon"),
+}
 
 
 def seconds_of_day(hms: str) -> int:
@@ -25,40 +31,75 @@ def seconds_of_day(hms: str) -> int:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--race", default="20551")
-    args = ap.parse_args()
-    course = json.loads((ROOT / "web" / "course.json").read_text())
-    mats = dict(course["mats"])
-    mats["ChipStart"] = mats["Start"]
-    data = json.loads((ROOT / "data" / f"splits-{args.race}.json").read_text())
-
-    runners = []
-    skipped = 0
-    for r in data["runners"]:
-        splits = []
-        for s in r["splits"]:
-            if s["location"] not in mats:
-                continue
-            splits.append([mats[s["location"]], seconds_of_day(s["time_of_day"])])
-        # keep arc and time strictly increasing; a bad read is dropped rather than making a runner go backwards
-        clean: list[list[float]] = []
-        for arc, t in splits:
-            if clean and (arc <= clean[-1][0] or t <= clean[-1][1]):
-                continue
-            clean.append([round(arc), t])
-        if len(clean) < 2:
-            skipped += 1
+    courses = json.loads((ROOT / "web" / "courses.json").read_text())
+    runners: list[dict] = []
+    for race_id, (race, course_id) in RACES.items():
+        path = ROOT / "data" / f"splits-{race_id}.json"
+        if not path.exists():
+            print(f"no {path.name}, skipping {race}", file=sys.stderr)
             continue
-        runners.append({"bib": r["bib"], "name": r["name"], "sex": r["sex"], "age": r["age"],
-                        "city": r["city"], "state": r["state"], "time": r["time"], "splits": clean})
+        mats = dict(courses[course_id]["mats"])
+        mats["ChipStart"] = mats["Start"]
+        for r in json.loads(path.read_text())["runners"]:
+            compact(r, race, course_id, mats, runners)
+    write(runners, courses)
 
+
+def compact(r: dict, race: str, course_id: str, mats: dict, runners: list) -> None:
+    """Append one runner with strictly increasing (arc, time) splits, or skip them."""
+    splits = []
+    for s in r["splits"]:
+        if s["location"] not in mats:
+            continue
+        splits.append([mats[s["location"]], seconds_of_day(s["time_of_day"])])
+    # keep arc and time strictly increasing; a bad read is dropped rather than making a runner go backwards
+    clean: list[list[float]] = []
+    for arc, t in splits:
+        if clean and (arc <= clean[-1][0] or t <= clean[-1][1]):
+            continue
+        clean.append([round(arc), t])
+    if len(clean) < 2:
+        print(
+            f"skipping {race} bib {r['bib']} ({r['name']}): fewer than two chip reads",
+            file=sys.stderr,
+        )
+        return
+    runners.append(
+        {
+            "race": race,
+            "course": course_id,
+            "bib": r["bib"],
+            "name": r["name"],
+            "sex": r["sex"],
+            "age": r["age"],
+            "city": r["city"],
+            "state": r["state"],
+            "time": r["time"],
+            "splits": clean,
+        }
+    )
+
+
+def write(runners: list, courses: dict) -> None:
     first = min(r["splits"][0][1] for r in runners)
     last = max(r["splits"][-1][1] for r in runners)
-    out = {"race": data["race"], "name": course["name"], "t_start": first, "t_end": last, "runners": runners}
+    counts = {
+        race: sum(1 for r in runners if r["race"] == race)
+        for race in ("marathon", "half", "relay")
+    }
+    out = {
+        "name": "2026 FirstEnergy Akron Marathon, Half Marathon & Team Relay",
+        "t_start": first,
+        "t_end": last,
+        "counts": counts,
+        "runners": runners,
+    }
     (ROOT / "web" / "runners.json").write_text(json.dumps(out, separators=(",", ":")))
-    print(f"wrote web/runners.json: {len(runners)} runners, {skipped} skipped, "
-          f"clock {first // 3600}:{first % 3600 // 60:02d} to {last // 3600}:{last % 3600 // 60:02d}", file=sys.stderr)
+    print(
+        f"wrote web/runners.json: {counts}, "
+        f"clock {first // 3600}:{first % 3600 // 60:02d} to {last // 3600}:{last % 3600 // 60:02d}",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":
