@@ -58,6 +58,7 @@
   #matches .bibno { font-weight: 600; font-variant-numeric: tabular-nums; flex: 0 0 3.5em; }
   #matches .who { color: var(--muted); margin-left: auto; }
   #matches li:hover .who { color: inherit; }
+  #matches li.removed, #matches li.removed:hover { cursor: default; background: none; color: var(--muted); white-space: normal; }
   #filters { display: flex; gap: 6px 14px; align-items: center; flex-wrap: wrap; }
   #filters .group { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   #filters .group label:not(.chip) { color: var(--muted); }
@@ -181,6 +182,10 @@
     fetch('runners.json').then(r => r.json()),
   ]);
   $('subtitle').textContent = data.name;
+  if (data.names_removed) {
+    $('bib').placeholder = 'Find a bib or relay team';
+    $('bib').setAttribute('aria-label', 'Find a bib or relay team');
+  }
   for (const race of ['marathon', 'half', 'relay']) {
     $('n-' + race).textContent = data.counts[race];
     $('f-' + race).parentElement.hidden = data.counts[race] === 0; // races not loaded yet stay out of the way
@@ -377,7 +382,7 @@
       ctx.fillStyle = token('--hilite'); ctx.strokeStyle = token('--hilite-ink'); ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.font = '700 14px ' + token('--font-display');
-      const label = `#${highlighted.bib} ${highlighted.name}`.toUpperCase();
+      const label = `#${highlighted.bib} ${highlighted.name}`.trim().toUpperCase();
       const w = ctx.measureText(label).width;
       const lx = x + 12 + w + 12 > W - 16 ? x - 12 - w - 12 : x + 12;
       ctx.fillStyle = token('--hilite'); ctx.fillRect(lx, y - 11, w + 12, 22);
@@ -488,7 +493,14 @@
     if (exactBib.length) return exactBib;
     return data.runners.filter(r => r.bib.startsWith(q) || r.name.toLowerCase().includes(q)).slice(0, 12);
   }
-  function showMatches(matches) {
+  // The published copy has no runners' names, so a name search explains that instead of finding nothing.
+  function namesRemovedNote(query) {
+    return data.names_removed && /[a-z]/i.test(query) && !findRunners(query).length
+      ? '<li class="removed">Runners\' names aren\'t in this copy. Search by bib number or relay team name.</li>' : '';
+  }
+  function showMatches(matches, query = '') {
+    const note = namesRemovedNote(query);
+    if (note) { matchList.innerHTML = note; matchList.hidden = false; return; }
     matchList.innerHTML = matches.map((r, i) =>
       `<li data-i="${i}"><span class="bibno">#${r.bib}</span><span>${r.name}</span><span class="who">${raceLabel[r.race]}${r.division ? ' · ' + r.division : ''}</span></li>`).join('');
     matchList.hidden = matches.length === 0;
@@ -496,7 +508,7 @@
   }
   function pick(runner) {
     matchList.hidden = true;
-    bibInput.value = runner ? `${runner.bib} ${runner.name}` : '';
+    bibInput.value = runner ? `${runner.bib} ${runner.name}`.trim() : '';
     setHighlight(runner);
   }
   function setHighlight(runner) {
@@ -542,7 +554,7 @@
   const bibInput = $('bib');
   bibInput.addEventListener('input', () => {
     const matches = findRunners(bibInput.value);
-    showMatches(matches);
+    showMatches(matches, bibInput.value);
     if (matches.length === 1) setHighlight(matches[0]);
   });
   bibInput.addEventListener('keydown', e => { if (e.key === 'Enter') { const m = findRunners(bibInput.value); if (m.length) pick(m[0]); } if (e.key === 'Escape') matchList.hidden = true; });

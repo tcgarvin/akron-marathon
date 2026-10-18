@@ -2,3 +2,10 @@ data/raw/
 __pycache__/
 node_modules/
 .venv/
+
+# Race results carry runners' names; they stay local.
+data/splits-*.json
+data/*.log
+data/cleaning.json
+web/runners.json
+tools/fetch_results.py
